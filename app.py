@@ -209,22 +209,8 @@ def predict_disease(image_data):
                 # Filter out very low confidence predictions
                 if confidence < 1: continue
 
-                # Get disease info
-                if class_name in DISEASE_INFO:
-                    disease_info = get_disease_info(class_name)
-                else:
-                    parts = class_name.split('___')
-                    plant = parts[0] if len(parts) > 0 else 'Unknown'
-                    disease = parts[1].replace('_', ' ') if len(parts) > 1 else 'Unknown'
-                    
-                    disease_info = {
-                        'plant': plant,
-                        'disease': disease,
-                        'description': f'Detected {disease} on {plant} plant.',
-                        'symptoms': 'See image for visual symptoms.',
-                        'treatment': ['Consult an agricultural expert for treatment options.'],
-                        'prevention': 'Regular monitoring and proper plant care.'
-                    }
+                # Get disease info using the robust lookup
+                disease_info = get_disease_info(class_name)
                 
                 results.append({
                     'class_name': class_name,

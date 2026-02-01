@@ -29,7 +29,7 @@ IMG_SIZE = 128
 DATA_DIR = Path("Dataset")
 MODEL_DIR = Path("model")
 MODEL_PATH = MODEL_DIR / "plant_disease_model.pkl"
-MAX_IMAGES_PER_CLASS = None  # Cap images to prevent memory overflow, set None for all
+MAX_IMAGES_PER_CLASS = 1000  # Cap images to prevent memory overflow, set None for all
 
 
 def get_class_names(data_dir):
@@ -125,42 +125,71 @@ def extract_features(img_array):
 
 
 def load_dataset(data_dir, max_per_class=None):
-    """Load dataset with progress reporting."""
-    print(f"[*] Scanning {data_dir}...")
-    class_names = get_class_names(data_dir)
-    
-    if not class_names:
-        raise ValueError("No classes found! Check Testing_Database folder.")
-        
-    print(f"[*] Found {len(class_names)} classes: {class_names}")
-    
+    """
+    Loads images from the new dataset structure:
+    Dataset / <Plant> / Train / <Disease>
+    Standardizes names to: Plant___Disease
+    """
     X = []
     y = []
+    class_names = []
     
-    for idx, class_name in enumerate(class_names):
-        class_dir = data_dir / class_name
-        images = list(class_dir.glob("*.jpg")) + list(class_dir.glob("*.png")) + \
-                 list(class_dir.glob("*.jpeg")) + list(class_dir.glob("*.JPG"))
-        
-        # Limit count if needed
-        if max_per_class and len(images) > max_per_class:
-            images = random.sample(images, max_per_class)
-            
-        print(f"  > Processing {class_name}: {len(images)} images...")
-        
-        count = 0
-        for img_path in images:
-            img_arr = load_image(img_path)
-            if img_arr is not None:
-                feats = extract_features(img_arr)
-                X.append(feats)
-                y.append(idx)
-                count += 1
-                
-                if count % 200 == 0:
-                    print(f"    Loaded {count}...", end="\r")
-        print(f"    Simple Completed: {count} images loaded.")
+    if not os.path.exists(data_dir):
+        print(f"[!] Data directory not found: {data_dir}")
+        return np.array([]), np.array([]), []
 
+    # Get plants (Apple, Tomato, etc.)
+    plants = [d for d in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, d))]
+    
+    for plant in plants:
+        plant_path = os.path.join(data_dir, plant)
+        # We focus on the 'Train' subset for training the model
+        train_path = os.path.join(plant_path, "Train")
+        
+        if not os.path.exists(train_path):
+            # Fallback in case 'Train' folder is missing but diseases are directly inside
+            train_path = plant_path
+            
+        diseases = [d for d in os.listdir(train_path) if os.path.isdir(os.path.join(train_path, d))]
+        
+        for disease in diseases:
+            # Combine plant and disease into standard name (e.g. Apple___Apple_Scab)
+            # Replaces spaces with underscores to match disease_info.py keys
+            std_class_name = f"{plant}___{disease.replace(' ', '_')}"
+            
+            if std_class_name not in class_names:
+                class_names.append(std_class_name)
+            
+            label = class_names.index(std_class_name)
+            disease_path = os.path.join(train_path, disease)
+            
+            print(f"  > Processing {std_class_name}...", end="\r")
+            
+            filenames = [f for f in os.listdir(disease_path) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+            
+            if max_per_class:
+                filenames = filenames[:max_per_class]
+            
+            count = 0
+            for filename in filenames:
+                try:
+                    img_path = os.path.join(disease_path, filename)
+                    # Load and resize using PIL
+                    img = Image.open(img_path).convert('RGB')
+                    img = img.resize((IMG_SIZE, IMG_SIZE), Image.Resampling.LANCZOS) # Corrected resize call
+                    img_array = np.array(img, dtype=np.float32) / 255.0 # Corrected dtype and normalization
+                    
+                    # Extract features
+                    features = extract_features(img_array)
+                    
+                    X.append(features)
+                    y.append(label)
+                    count += 1
+                except Exception as e:
+                    continue
+            
+            print(f"    Completed {std_class_name}: {count} images loaded.    ")
+            
     return np.array(X), np.array(y), class_names
 
 
@@ -172,6 +201,12 @@ def train():
     
     # 1. Load Data
     X, y, classes = load_dataset(DATA_DIR, MAX_IMAGES_PER_CLASS)
+    
+    if len(X) == 0:
+        print("\n[!] ERROR: No images were loaded. Please check your 'Dataset' folder structure.")
+        print("Expected structure: Dataset / <Plant> / Train / <Disease> / image.jpg")
+        return
+
     print(f"\n[*] Dataset Loaded: {X.shape[0]} samples, {X.shape[1]} features")
     
     # 2. Split Data

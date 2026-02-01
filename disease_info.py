@@ -526,14 +526,53 @@ CLASS_NAMES = [
 ]
 
 def get_disease_info(class_name):
-    """Get detailed information about a disease."""
+    """Get detailed information about a disease with robust fuzzy lookup."""
+    # Normalize the incoming class name
+    class_name_norm = class_name.replace('(', '').replace(')', '').replace(',', '').replace('  ', ' ')
+    
+    # Try exact match first
     if class_name in DISEASE_INFO:
         return DISEASE_INFO[class_name]
+    
+    # Common plant name mappings (Folder Name -> database key prefix)
+    plant_aliases = {
+        'bell pepper': 'pepper, bell',
+        'corn maize': 'corn',
+        'corn': 'corn',
+        'pepper bell': 'pepper, bell'
+    }
+    
+    target = class_name_norm.lower()
+    
+    # Check for plant aliasing
+    for alias, replacement in plant_aliases.items():
+        if target.startswith(alias + '___'):
+            target = target.replace(alias, replacement, 1)
+            break
+
+    # Try case-insensitive and normalized match
+    for key in DISEASE_INFO.keys():
+        key_norm = key.lower().replace('(', '').replace(')', '').replace(',', '').replace('  ', ' ')
+        if key_norm == target:
+            return DISEASE_INFO[key]
+            
+    # Try underscore/space flexibility
+    target_soft = target.replace('_', ' ')
+    for key in DISEASE_INFO.keys():
+        key_soft = key.lower().replace('(', '').replace(')', '').replace(',', '').replace('_', ' ').replace('  ', ' ')
+        if key_soft == target_soft:
+            return DISEASE_INFO[key]
+
+    # Fallback default info with best effort extraction
+    parts = class_name.split('___')
+    plant = parts[0] if len(parts) > 0 else 'Unknown'
+    disease = parts[1].replace('_', ' ') if len(parts) > 1 else 'Unknown'
+    
     return {
-        'plant': 'Unknown',
-        'disease': 'Unknown',
-        'description': 'Unable to identify the disease.',
-        'symptoms': 'Please try uploading a clearer image.',
-        'treatment': ['Consult a local agricultural extension office'],
-        'prevention': 'Regular monitoring and proper plant care.'
+        'plant': plant,
+        'disease': disease,
+        'description': f'Diagnosis: {disease} affecting {plant}.',
+        'symptoms': 'Specific detail record not found, but general symptoms for this category apply.',
+        'treatment': ['Consult a local agricultural extension office', 'Maintain proper soil moisture and nutrients'],
+        'prevention': 'Regular monitoring and proper hygiene in the garden.'
     }
