@@ -1,0 +1,11 @@
+
+Testing_Database/
+Dataset/
+model/
+__pycache__/
+*.pyc
+*.h5
+*.pkl
+uploads/
+.env
+.ipynb_checkpoints/
